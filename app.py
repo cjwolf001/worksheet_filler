@@ -27,9 +27,26 @@ def extract_pages(pdf_path):
     return pages_text
 
 
+def extract_reference_text(pdf_path, max_chars=6000):
+    """
+    Extract text from a reference PDF (reading/article).
+    We cap length so we don't explode token usage.
+    """
+    chunks = []
+    with pdfplumber.open(pdf_path) as pdf:
+        for page in pdf.pages:
+            t = page.extract_text()
+            if t:
+                chunks.append(t)
+    joined = "\n\n".join(chunks)
+    if len(joined) > max_chars:
+        return joined[:max_chars]
+    return joined
+
+
 # ---------- ASK THE MODEL WHAT TO FILL ----------
 
-def get_fill_items_from_text(text):
+def get_fill_items_from_text(page_text, custom_instructions="", reference_text=""):
     """
     Ask the model to find EVERY thing a student is supposed to fill in on this page:
     - Questions
@@ -42,13 +59,31 @@ def get_fill_items_from_text(text):
       ...
     ]
     """
-    if not text.strip():
+    if not page_text.strip():
         return []
+
+    # Optional context blocks
+    extra_instr_block = ""
+    if custom_instructions.strip():
+        extra_instr_block = f"""
+ADDITIONAL WORKSHEET INSTRUCTIONS FROM THE USER:
+\"\"\"{custom_instructions.strip()}\"\"\""""
+
+    ref_block = ""
+    if reference_text.strip():
+        ref_block = f"""
+REFERENCE READING / ARTICLE (use this to answer whenever relevant):
+\"\"\"{reference_text.strip()}\"\"\""""
 
     prompt = f"""
 You are helping with a school worksheet.
 
-You are given the FULL text of ONE worksheet page. This may include:
+You are given:
+1) The FULL text of ONE worksheet page.
+{extra_instr_block}
+{ref_block}
+
+The worksheet page may include:
 - Section titles and headers
 - Instructions like "For questions 1–3, use Article 2, Clause 3"
 - Labeled blanks like "Birth date: ______; Place of birth: ______"
@@ -82,13 +117,14 @@ Your job:
 
 3. Use any relevant instructions or headings that appear ABOVE the prompt text as context.
    If there is no content on the page, you may use your own general knowledge.
+   Also use the REFERENCE READING, if provided, whenever it is relevant.
 
 4. Always give your best short answer. Do NOT say things like "not in text",
    "unavailable", or "cannot answer". Just answer based on your knowledge.
 
-5. For bullet-style prompts, put each answer on its own line using "\n", e.g.:
+5. For bullet-style prompts, put each answer on its own line using "\\n", e.g.:
 
-"• case type one\n• case type two\n• case type three"
+"• case type one\\n• case type two\\n• case type three"
 
 Return ONLY valid JSON in this exact format:
 
@@ -102,8 +138,8 @@ Return ONLY valid JSON in this exact format:
 
 Do not include any other text, no explanations.
 
-Page text:
-{text}
+WORKSHEET PAGE TEXT:
+\"\"\"{page_text}\"\"\"
 """
 
     response = client.chat.completions.create(
@@ -147,15 +183,18 @@ Page text:
     return cleaned
 
 
-
-def build_items_for_pdf(pdf_path):
+def build_items_for_pdf(pdf_path, custom_instructions="", reference_text=""):
     """For each page, get a list of fill items (prompt + answer)."""
     pages = extract_pages(pdf_path)
     all_items = []
 
     for i, page_text in enumerate(pages):
         print(f"Processing page {i + 1}/{len(pages)}...")
-        items = get_fill_items_from_text(page_text)
+        items = get_fill_items_from_text(
+            page_text,
+            custom_instructions=custom_instructions,
+            reference_text=reference_text,
+        )
         print(f"  Found {len(items)} fillable items.")
         all_items.append(items)
 
@@ -315,7 +354,24 @@ def index():
     if file.filename == "":
         return render_template("index.html", error="No file selected.")
 
-    # Save upload to temp file
+    # New: extra instructions from the user
+    custom_instructions = (request.form.get("custom_instructions") or "").strip()
+
+    # New: optional reference PDF
+    reference_text = ""
+    ref_file = request.files.get("ref_file")
+    ref_path = None
+    if ref_file and ref_file.filename:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_ref:
+            ref_path = tmp_ref.name
+            ref_file.save(ref_path)
+        try:
+            reference_text = extract_reference_text(ref_path)
+        finally:
+            if ref_path and os.path.exists(ref_path):
+                os.remove(ref_path)
+
+    # Save upload to temp file (main worksheet)
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_in:
         input_path = tmp_in.name
         file.save(input_path)
@@ -326,7 +382,11 @@ def index():
 
     try:
         print("Building fill items for uploaded PDF...")
-        items_by_page = build_items_for_pdf(input_path)
+        items_by_page = build_items_for_pdf(
+            input_path,
+            custom_instructions=custom_instructions,
+            reference_text=reference_text,
+        )
 
         print("Overlaying answers onto PDF...")
         overlay_answers_on_pdf(input_path, items_by_page, output_path)
