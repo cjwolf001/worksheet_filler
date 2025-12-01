@@ -15,7 +15,7 @@ client = OpenAI()
 app = Flask(__name__)
 
 
-# --------- CORE WORKSHEET LOGIC (same as the script that worked) ---------
+# --------- CORE WORKSHEET LOGIC ---------
 
 def extract_pages(pdf_path):
     pages_text = []
@@ -33,14 +33,32 @@ def get_qna_from_text(text):
     prompt = f"""
 You are helping with a school worksheet.
 
-From the text below, find any questions a student is supposed to answer
-and give short, direct answers.
+You are given the FULL text of a worksheet page. This may include:
+- Section titles and headers
+- Instructions like "For questions 1–3, use Article 2, Clause 3"
+- Numbered questions (1., 2., 3., etc.)
+- Answer blanks or lines
+
+Your job:
+1. Find EVERY actual question a student is supposed to answer.
+2. Use any relevant instructions or headings that appear ABOVE the question
+   (for example: "For questions 1–3, refer to Article 2, Clause 3").
+3. Give a short, direct answer to each question.
+4. If a question cannot be answered from the page text alone, you MAY use
+   your own general knowledge or web search to answer it.
+
+IMPORTANT:
+- Do NOT treat pure instructions or headings as questions.
+  Example: "For questions 1–3, use the chart above." is NOT a question.
+- Questions may be numbered (1, 2, 3) or written in sentences.
+- Always give your best short answer for every question you find.
+- Do NOT say things like "not in text", "unavailable", or "cannot answer".
 
 Return ONLY valid JSON in this exact format:
 
 [
   {{
-    "question": "…question text exactly as it appears…",
+    "question": "…the question text as it appears on the page…",
     "answer": "…short answer only…"
   }},
   ...
@@ -48,19 +66,24 @@ Return ONLY valid JSON in this exact format:
 
 Do not include any other text, no explanations.
 
-Text:
+Page text:
 {text}
 """
 
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[{"role": "user", "content": prompt}]
+    # Use the Responses API with web_search enabled
+    response = client.responses.create(
+        model="gpt-5.1",  # must be a model that supports web_search
+        input=prompt,
+        tools=[
+            {"type": "web_search"}
+        ]
     )
 
-    raw = response.choices[0].message.content
+    # Responses API: take the main text output
+    output = response.output[0].content[0].text
 
     try:
-        data = json.loads(raw)
+        data = json.loads(output)
         if isinstance(data, list):
             cleaned = []
             for item in data:
@@ -210,7 +233,8 @@ INDEX_HTML = """
 </head>
 <body>
     <h1>Conor's AI Worksheet Filler</h1>
-    <p>Upload a PDF worksheet. The AI will try to answer and fill it. I am personally paying for these API tokens so pls don't abuse :(</p>
+    <p>Upload a PDF worksheet. The AI will try to answer and fill it.</p>
+    <p> I am personally paying for these API tokens, please don't abuse!" </p>
     <form method="post" action="/" enctype="multipart/form-data">
         <input type="file" name="pdf_file" accept="application/pdf" required>
         <br><br>
@@ -266,5 +290,5 @@ def index():
 
 
 if __name__ == "__main__":
-    # For WSL, hit http://localhost:5000 in your Windows browser
+    # For WSL or Render local testing, hit http://localhost:5000 in your browser
     app.run(host="0.0.0.0", port=5000, debug=True)
