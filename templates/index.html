@@ -21,9 +21,28 @@
         id="upload-form"
         target="download_iframe"
       >
+        <!-- Main worksheet PDF -->
         <label class="file-label">
           <span>Select a worksheet PDF</span>
           <input type="file" name="pdf_file" accept="application/pdf" required>
+        </label>
+
+        <!-- Optional reference PDF -->
+        <label class="file-label">
+          <span>Reference PDF (article / reading, optional)</span>
+          <input type="file" name="ref_file" accept="application/pdf">
+        </label>
+
+        <!-- Extra instructions / pasted text -->
+        <label class="file-label">
+          <span>Extra instructions / reference text (optional)</span>
+          <textarea
+            name="custom_instructions"
+            rows="4"
+            placeholder="Paste article text here, or add notes like:
+- Use the attached reading
+- Answer in 1–2 sentences
+- Focus on causes and effects only"></textarea>
         </label>
 
         <button type="submit" class="btn-primary" id="submit-btn">
