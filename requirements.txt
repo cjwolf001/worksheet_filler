@@ -1,0 +1,7 @@
+flask
+openai
+pdfplumber
+pypdf
+reportlab
+pymupdf
+gunicorn
