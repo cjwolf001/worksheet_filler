@@ -209,8 +209,8 @@ INDEX_HTML = """
     <title>Worksheet Filler</title>
 </head>
 <body>
-    <h1>AI Worksheet Filler</h1>
-    <p>Upload a PDF worksheet. The AI will try to answer and fill it.</p>
+    <h1>Conor's AI Worksheet Filler</h1>
+    <p>Upload a PDF worksheet. The AI will try to answer and fill it. I am personally paying for these API tokens so pls don't abuse :(</p>
     <form method="post" action="/" enctype="multipart/form-data">
         <input type="file" name="pdf_file" accept="application/pdf" required>
         <br><br>
