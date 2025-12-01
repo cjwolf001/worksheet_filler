@@ -14,6 +14,8 @@ from reportlab.pdfgen import canvas
 client = OpenAI()
 app = Flask(__name__)
 
+client.timeout = 120.0
+
 
 # ---------- BASIC PDF TEXT EXTRACTION ----------
 
